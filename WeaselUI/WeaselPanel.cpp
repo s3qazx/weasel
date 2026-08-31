@@ -199,7 +199,8 @@ void WeaselPanel::_DrawToolbar(CDCHandle dc, bool back) {
       _HighlightText(
           dc, m_toolbarRects[i],
           hot ? m_style.hilited_back_color : m_style.candidate_back_color,
-          TRANS_COLOR, DPI_SCALE(m_style.round_corner), BackType::TEXT);
+          TRANS_COLOR, DPI_SCALE(m_style.round_corner), BackType::TEXT,
+          IsToRoundStruct(), TRANS_COLOR);
     }
     return;
   }
