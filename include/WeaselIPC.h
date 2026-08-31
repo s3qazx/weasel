@@ -32,14 +32,23 @@ enum WEASEL_IPC_COMMAND {
   WEASEL_IPC_SELECT_CANDIDATE_ON_CURRENT_PAGE,
   WEASEL_IPC_HIGHLIGHT_CANDIDATE_ON_CURRENT_PAGE,
   WEASEL_IPC_CHANGE_PAGE,
+  WEASEL_IPC_SET_OPTION,
   WEASEL_IPC_LAST_COMMAND
 };
 
 // Posted by WeaselTrayIcon to the server window so that Shell_NotifyIcon runs
 // on the server message thread instead of a pipe worker thread.
 #define WM_WEASEL_SERVICE_NOTIFY (WEASEL_IPC_LAST_COMMAND + 200)
+#define WM_WEASEL_SERVICE_SET_OPTION (WEASEL_IPC_LAST_COMMAND + 201)
 
 namespace weasel {
+enum class RimeOption : WORD {
+  ASCII_MODE,
+  FULL_SHAPE,
+  ASCII_PUNCT,
+  SIMPLIFICATION,
+};
+
 struct PipeMessage {
   WEASEL_IPC_COMMAND Msg;
   DWORD wParam;
@@ -144,6 +153,8 @@ class Client {
   void FocusOut();
   // 托盤菜單
   void TrayCommand(UINT menuId);
+  // 设置当前会话选项
+  bool SetOption(RimeOption option, bool value);
   // 读取server返回的数据
   bool GetResponseData(ResponseHandler handler);
 
@@ -164,6 +175,7 @@ class Server {
   int Run();
 
   void SetRequestHandler(RequestHandler* pHandler);
+  bool SetOption(RimeOption option, bool value);
   void AddMenuHandler(UINT uID, CommandHandler handler);
   HWND GetHWnd();
 

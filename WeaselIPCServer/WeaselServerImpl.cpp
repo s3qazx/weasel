@@ -176,6 +176,8 @@ int ServerImpl::Stop() {
 }
 
 static std::mutex g_api_mutex;
+static const char* const kRimeOptionNames[] = {"ascii_mode", "full_shape",
+                                               "ascii_punct", "simplification"};
 
 int ServerImpl::Run() {
   // This workaround causes a VC internal error:
@@ -196,6 +198,33 @@ int ServerImpl::Run() {
   int nRet = theLoop.Run();
   _Module.RemoveMessageLoop();
   return nRet;
+}
+
+bool ServerImpl::SetOption(RimeOption option, bool value) {
+  const WORD index = static_cast<WORD>(option);
+  if (index >= _countof(kRimeOptionNames))
+    return false;
+  return PostMessage(WM_WEASEL_SERVICE_SET_OPTION,
+                     MAKELONG(index, value ? 1 : 0));
+}
+
+LRESULT ServerImpl::OnSetOptionMessage(UINT uMsg,
+                                       WPARAM wParam,
+                                       LPARAM lParam,
+                                       BOOL& bHandled) {
+  const WORD option = LOWORD(wParam);
+  if (!m_pRequestHandler || option >= _countof(kRimeOptionNames))
+    return 0;
+
+  std::unique_lock lock(g_api_mutex, std::try_to_lock);
+  if (!lock.owns_lock()) {
+    PostMessage(uMsg, wParam, lParam);
+    return 0;
+  }
+
+  m_pRequestHandler->SetOption(0, kRimeOptionNames[option],
+                               HIWORD(wParam) != 0);
+  return 0;
 }
 
 DWORD ServerImpl::OnEcho(WEASEL_IPC_COMMAND uMsg, DWORD wParam, DWORD lParam) {
@@ -371,6 +400,19 @@ DWORD ServerImpl::OnChangePage(WEASEL_IPC_COMMAND uMsg,
   return 0;
 }
 
+DWORD ServerImpl::OnSetOption(WEASEL_IPC_COMMAND uMsg,
+                              DWORD wParam,
+                              DWORD lParam) {
+  if (!m_pRequestHandler || !m_pRequestHandler->FindSession(lParam))
+    return 0;
+  const WORD option = LOWORD(wParam);
+  if (option >= _countof(kRimeOptionNames))
+    return 0;
+  m_pRequestHandler->SetOption(lParam, kRimeOptionNames[option],
+                               HIWORD(wParam) != 0);
+  return 1;
+}
+
 #define MAP_PIPE_MSG_HANDLE(__msg, __wParam, __lParam) \
   {                                                    \
     auto lParam = __lParam;                            \
@@ -409,6 +451,7 @@ void ServerImpl::HandlePipeMessage(PipeMessage pipe_msg, _Resp resp) {
   PIPE_MSG_HANDLE(WEASEL_IPC_HIGHLIGHT_CANDIDATE_ON_CURRENT_PAGE,
                   OnHighlightCandidateOnCurrentPage);
   PIPE_MSG_HANDLE(WEASEL_IPC_CHANGE_PAGE, OnChangePage);
+  PIPE_MSG_HANDLE(WEASEL_IPC_SET_OPTION, OnSetOption);
   PIPE_MSG_HANDLE(WEASEL_IPC_TRAY_COMMAND, OnCommand);
   END_MAP_PIPE_MSG_HANDLE(result);
 
@@ -473,6 +516,10 @@ int Server::Run() {
 
 void Server::SetRequestHandler(RequestHandler* pHandler) {
   m_pImpl->SetRequestHandler(pHandler);
+}
+
+bool Server::SetOption(RimeOption option, bool value) {
+  return m_pImpl->SetOption(option, value);
 }
 
 void Server::AddMenuHandler(UINT uID, CommandHandler handler) {

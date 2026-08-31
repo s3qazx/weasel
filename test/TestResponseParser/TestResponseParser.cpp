@@ -85,11 +85,25 @@ void test_4() {
   BOOST_TEST_EQ(1, c.totalPages);
 }
 
+void test_toolbar_status() {
+  WCHAR resp[] =
+      L"action=status\n"
+      L"status.ascii_punct=1\n"
+      L"status.simplified=1\n"
+      L".\n";
+  weasel::Status status;
+  weasel::ResponseParser parser(NULL, NULL, &status);
+  parser(resp, wcslen(resp));
+  BOOST_TEST(status.ascii_punct);
+  BOOST_TEST(status.simplified);
+}
+
 int _tmain(int argc, _TCHAR* argv[]) {
   test_1();
   test_2();
   test_3();
   test_4();
+  test_toolbar_status();
 
   system("pause");
   return boost::report_errors();

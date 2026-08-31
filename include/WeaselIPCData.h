@@ -153,7 +153,9 @@ struct Status {
         ascii_mode(false),
         composing(false),
         disabled(false),
-        full_shape(false) {}
+        full_shape(false),
+        ascii_punct(false),
+        simplified(false) {}
   void reset() {
     schema_name.clear();
     schema_id.clear();
@@ -161,13 +163,17 @@ struct Status {
     composing = false;
     disabled = false;
     full_shape = false;
+    ascii_punct = false;
+    simplified = false;
     type = SCHEMA;
   }
   bool operator==(const Status status) {
     return (status.schema_name == schema_name &&
             status.schema_id == schema_id && status.ascii_mode == ascii_mode &&
             status.composing == composing && status.disabled == disabled &&
-            status.full_shape == full_shape && status.type == type);
+            status.full_shape == full_shape &&
+            status.ascii_punct == ascii_punct &&
+            status.simplified == simplified && status.type == type);
   }
   // 輸入方案
   std::wstring schema_name;
@@ -181,6 +187,10 @@ struct Status {
   bool disabled;
   // 全角状态
   bool full_shape;
+  // 英文标点状态
+  bool ascii_punct;
+  // 简体状态（false 表示繁体）
+  bool simplified;
   // 图标类型, schema/full_shape
   IconType type;
 };

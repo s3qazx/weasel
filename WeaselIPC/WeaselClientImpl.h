@@ -27,6 +27,7 @@ class ClientImpl {
   void FocusIn();
   void FocusOut();
   void TrayCommand(UINT menuId);
+  bool SetOption(RimeOption option, bool value);
   bool GetResponseData(ResponseHandler const& handler);
 
  protected:

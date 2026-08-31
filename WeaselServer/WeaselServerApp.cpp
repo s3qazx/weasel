@@ -7,6 +7,25 @@ WeaselServerApp::WeaselServerApp()
       tray_icon(m_ui) {
   // m_handler.reset(new RimeWithWeaselHandler(&m_ui));
   m_server.SetRequestHandler(m_handler.get());
+  m_ui.SetToolbarCallback([this](weasel::ToolbarAction action, bool value) {
+    switch (action) {
+      case weasel::ToolbarAction::ASCII_MODE:
+        m_server.SetOption(weasel::RimeOption::ASCII_MODE, value);
+        break;
+      case weasel::ToolbarAction::FULL_SHAPE:
+        m_server.SetOption(weasel::RimeOption::FULL_SHAPE, value);
+        break;
+      case weasel::ToolbarAction::ASCII_PUNCT:
+        m_server.SetOption(weasel::RimeOption::ASCII_PUNCT, value);
+        break;
+      case weasel::ToolbarAction::SIMPLIFICATION:
+        m_server.SetOption(weasel::RimeOption::SIMPLIFICATION, value);
+        break;
+      case weasel::ToolbarAction::SETTINGS:
+        execute(install_dir() / L"WeaselDeployer.exe", std::wstring());
+        break;
+    }
+  });
   SetupMenuHandlers();
 }
 

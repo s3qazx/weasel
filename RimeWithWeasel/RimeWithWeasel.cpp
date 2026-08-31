@@ -772,6 +772,13 @@ bool RimeWithWeaselHandler::_Respond(WeaselSessionId ipc_id, EatLine eat) {
         .append(L"status.full_shape=")
         .append(Bool_wstring[!!status.is_full_shape])
         .append(L"\n")
+        .append(L"status.ascii_punct=")
+        .append(Bool_wstring[!!rime_api->get_option(session_id, "ascii_punct")])
+        .append(L"\n")
+        .append(L"status.simplified=")
+        .append(
+            Bool_wstring[!!rime_api->get_option(session_id, "simplification")])
+        .append(L"\n")
         .append(L"status.schema_id=")
         .append(status.schema_id ? u8tow(status.schema_id) : std::wstring())
         .append(L"\n");
@@ -1451,6 +1458,8 @@ void RimeWithWeaselHandler::_GetStatus(Status& stat,
     stat.composing = !!status.is_composing;
     stat.disabled = !!status.is_disabled;
     stat.full_shape = !!status.is_full_shape;
+    stat.ascii_punct = !!rime_api->get_option(session_id, "ascii_punct");
+    stat.simplified = !!rime_api->get_option(session_id, "simplification");
     if (schema_id != m_last_schema_id) {
       session_status.__synced = false;
       m_last_schema_id = schema_id;

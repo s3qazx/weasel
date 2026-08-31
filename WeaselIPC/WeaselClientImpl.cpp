@@ -142,6 +142,13 @@ void ClientImpl::TrayCommand(UINT menuId) {
   _SendMessage(WEASEL_IPC_TRAY_COMMAND, menuId, session_id);
 }
 
+bool ClientImpl::SetOption(RimeOption option, bool value) {
+  if (!_Active())
+    return false;
+  const DWORD packed = MAKELONG(static_cast<WORD>(option), value ? 1 : 0);
+  return _SendMessage(WEASEL_IPC_SET_OPTION, packed, session_id) != 0;
+}
+
 void ClientImpl::StartSession() {
   if (_Active() && Echo())
     return;
@@ -274,6 +281,10 @@ void Client::EndMaintenance() {
 
 void Client::TrayCommand(UINT menuId) {
   m_pImpl->TrayCommand(menuId);
+}
+
+bool Client::SetOption(RimeOption option, bool value) {
+  return m_pImpl->SetOption(option, value);
 }
 
 bool Client::Echo() {

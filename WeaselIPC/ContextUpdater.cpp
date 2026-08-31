@@ -124,4 +124,14 @@ void StatusUpdater::Store(Deserializer::KeyType const& k,
     m_pTarget->p_status->full_shape = bool_value;
     return;
   }
+
+  if (k[1] == L"ascii_punct") {
+    m_pTarget->p_status->ascii_punct = bool_value;
+    return;
+  }
+
+  if (k[1] == L"simplified") {
+    m_pTarget->p_status->simplified = bool_value;
+    return;
+  }
 }

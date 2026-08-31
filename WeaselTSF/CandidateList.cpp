@@ -4,6 +4,7 @@
 #include "CandidateList.h"
 #include <KeyEvent.h>
 #include <math.h>
+#include <resource.h>
 
 using namespace std;
 using namespace weasel;
@@ -305,6 +306,10 @@ void CCandidateList::StartUI() {
                               bool* const next, bool* const scroll_next) {
       _tsf->HandleUICallback(sel, hov, next, scroll_next);
     });
+  if (!_ui->toolbarCallback())
+    _ui->SetToolbarCallback([this](weasel::ToolbarAction action, bool value) {
+      _tsf->HandleToolbarAction(action, value);
+    });
   if (FAILED(pUIElementMgr->BeginUIElement(this, &_pbShow, &uiid)))
     return;
   _uiStarted = true;
@@ -447,4 +452,33 @@ void WeaselTSF::HandleUICallback(size_t* const sel,
     _HandleMouseHoverEvent(*hov);
   else if (next || scroll_next)
     _HandleMousePageEvent(next, scroll_next);
+}
+
+void WeaselTSF::HandleToolbarAction(weasel::ToolbarAction action, bool value) {
+  if (action != weasel::ToolbarAction::SETTINGS && !_EnsureServerConnected())
+    return;
+
+  bool changed = false;
+  switch (action) {
+    case weasel::ToolbarAction::ASCII_MODE:
+      changed = m_client.SetOption(weasel::RimeOption::ASCII_MODE, value);
+      break;
+    case weasel::ToolbarAction::FULL_SHAPE:
+      changed = m_client.SetOption(weasel::RimeOption::FULL_SHAPE, value);
+      break;
+    case weasel::ToolbarAction::ASCII_PUNCT:
+      changed = m_client.SetOption(weasel::RimeOption::ASCII_PUNCT, value);
+      break;
+    case weasel::ToolbarAction::SIMPLIFICATION:
+      changed = m_client.SetOption(weasel::RimeOption::SIMPLIFICATION, value);
+      break;
+    case weasel::ToolbarAction::SETTINGS:
+      _HandleLangBarMenuSelect(ID_WEASELTRAY_SETTINGS);
+      return;
+  }
+  if (!changed)
+    return;
+
+  m_client.ProcessKeyEvent(KeyEvent(0, 0));
+  _UpdateComposition(_pEditSessionContext);
 }

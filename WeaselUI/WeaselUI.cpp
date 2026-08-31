@@ -162,7 +162,9 @@ void UI::UpdateInputPosition(RECT const& rc) {
 }
 
 void UI::Update(const Context& ctx, const Status& status) {
-  if (ctx_ == ctx && status_ == status)
+  const bool context_changed = !(ctx_ == ctx);
+  const bool status_changed = !(status_ == status);
+  if (!context_changed && !status_changed)
     return;
   ctx_ = ctx;
   status_ = status;
@@ -176,4 +178,6 @@ void UI::Update(const Context& ctx, const Status& status) {
     }
   }
   Refresh();
+  if (!context_changed && status_changed && pimpl_ && pimpl_->panel.IsWindow())
+    pimpl_->panel.RedrawWindow();
 }

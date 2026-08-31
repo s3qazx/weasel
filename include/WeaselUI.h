@@ -16,6 +16,15 @@ enum ClientCapabilities {
   INLINE_PREEDIT_CAPABLE = 1,
 };
 
+// Actions exposed by the optional input toolbar.
+enum class ToolbarAction {
+  ASCII_MODE,
+  FULL_SHAPE,
+  ASCII_PUNCT,
+  SIMPLIFICATION,
+  SETTINGS,
+};
+
 class UIImpl;
 class DirectWriteResources;
 template <class T>
@@ -79,6 +88,14 @@ class UI {
     _UICallback = func;
   }
 
+  std::function<void(ToolbarAction, bool)>& toolbarCallback() {
+    return _ToolbarCallback;
+  }
+  void SetToolbarCallback(
+      std::function<void(ToolbarAction, bool)> const& func) {
+    _ToolbarCallback = func;
+  }
+
  private:
   UIImpl* pimpl_;
   PDWR pDWR;
@@ -91,6 +108,7 @@ class UI {
   bool in_server_;
   std::function<void(size_t* const, size_t* const, bool* const, bool* const)>
       _UICallback;
+  std::function<void(ToolbarAction, bool)> _ToolbarCallback;
 };
 
 class DirectWriteResources {
