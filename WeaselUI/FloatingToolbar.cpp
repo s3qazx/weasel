@@ -109,8 +109,10 @@ void FloatingToolbar::ClampPosition(int& x, int& y) const {
   MONITORINFO info = {sizeof(info)};
   if (!monitor || !GetMonitorInfoW(monitor, &info))
     return;
-  x = (std::max)(info.rcWork.left, (std::min)(x, info.rcWork.right - width_));
-  y = (std::max)(info.rcWork.top, (std::min)(y, info.rcWork.bottom - height_));
+  x = (std::max)(static_cast<int>(info.rcWork.left),
+                 (std::min)(x, static_cast<int>(info.rcWork.right) - width_));
+  y = (std::max)(static_cast<int>(info.rcWork.top),
+                 (std::min)(y, static_cast<int>(info.rcWork.bottom) - height_));
 }
 
 void FloatingToolbar::RestorePosition() {
