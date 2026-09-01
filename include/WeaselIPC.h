@@ -49,6 +49,8 @@ enum class RimeOption : WORD {
   SIMPLIFICATION,
 };
 
+constexpr DWORD WEASEL_FOCUS_PROFILE_EVENT = 0x80000000UL;
+
 struct PipeMessage {
   WEASEL_IPC_COMMAND Msg;
   DWORD wParam;
@@ -151,6 +153,8 @@ class Client {
   void FocusIn();
   // 输入窗口失去焦点
   void FocusOut();
+  // 当前活动输入方案切入或切出 Weasel
+  void SetActiveLanguageProfile(bool active);
   // 托盤菜單
   void TrayCommand(UINT menuId);
   // 设置当前会话选项

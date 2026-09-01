@@ -38,6 +38,7 @@ RimeWithWeaselHandler::RimeWithWeaselHandler(UI* ui)
     : m_ui(ui),
       m_active_session(0),
       m_toolbar_session(0),
+      m_toolbar_profile_session(0),
       m_disabled(true),
       m_current_dark_mode(false),
       m_global_ascii_mode(false),
@@ -151,6 +152,7 @@ void RimeWithWeaselHandler::Initialize() {
 void RimeWithWeaselHandler::Finalize() {
   m_active_session = 0;
   m_toolbar_session = 0;
+  m_toolbar_profile_session = 0;
   if (m_ui)
     m_ui->SetToolbarEnabled(false);
   m_disabled = true;
@@ -217,7 +219,6 @@ DWORD RimeWithWeaselHandler::AddSession(LPWSTR buffer, EatLine eat) {
   add_session = false;
   m_active_session = ipc_id;
   m_toolbar_session = ipc_id;
-  m_ui->SetToolbarEnabled(true);
   return ipc_id;
 }
 
@@ -233,15 +234,12 @@ DWORD RimeWithWeaselHandler::RemoveSession(WeaselSessionId ipc_id) {
   // TODO: force committing? otherwise current composition would be lost
   rime_api->destroy_session(to_session_id(ipc_id));
   m_session_status_map.erase(ipc_id);
+  if (m_toolbar_profile_session == ipc_id) {
+    m_toolbar_profile_session = 0;
+    m_ui->SetToolbarEnabled(false);
+  }
   if (m_toolbar_session == ipc_id) {
-    m_toolbar_session = 0;
-    for (const auto& pair : m_session_status_map) {
-      if (pair.first) {
-        m_toolbar_session = pair.first;
-        break;
-      }
-    }
-    m_ui->SetToolbarEnabled(m_toolbar_session != 0);
+    m_toolbar_session = m_toolbar_profile_session;
     if (m_toolbar_session)
       _UpdateUI(m_toolbar_session);
   }
@@ -314,7 +312,6 @@ BOOL RimeWithWeaselHandler::ProcessKeyEvent(KeyEvent keyEvent,
   _UpdateUI(ipc_id);
   m_active_session = ipc_id;
   m_toolbar_session = ipc_id;
-  m_ui->SetToolbarEnabled(true);
   return (BOOL)handled;
 }
 
@@ -326,7 +323,6 @@ void RimeWithWeaselHandler::CommitComposition(WeaselSessionId ipc_id) {
   _UpdateUI(ipc_id);
   m_active_session = ipc_id;
   m_toolbar_session = ipc_id;
-  m_ui->SetToolbarEnabled(true);
 }
 
 void RimeWithWeaselHandler::ClearComposition(WeaselSessionId ipc_id) {
@@ -337,7 +333,6 @@ void RimeWithWeaselHandler::ClearComposition(WeaselSessionId ipc_id) {
   _UpdateUI(ipc_id);
   m_active_session = ipc_id;
   m_toolbar_session = ipc_id;
-  m_ui->SetToolbarEnabled(true);
 }
 
 void RimeWithWeaselHandler::SelectCandidateOnCurrentPage(
@@ -377,16 +372,32 @@ bool RimeWithWeaselHandler::ChangePage(bool backward,
 void RimeWithWeaselHandler::FocusIn(DWORD client_caps, WeaselSessionId ipc_id) {
   DLOG(INFO) << "Focus in: ipc_id = " << ipc_id
              << ", client_caps = " << client_caps;
-  if (m_disabled)
+  if (m_disabled || !ipc_id ||
+      m_session_status_map.find(ipc_id) == m_session_status_map.end())
     return;
+  if (client_caps & WEASEL_FOCUS_PROFILE_EVENT) {
+    m_toolbar_profile_session = ipc_id;
+    m_toolbar_session = ipc_id;
+    _UpdateUI(ipc_id);
+    m_ui->SetToolbarEnabled(true);
+    return;
+  }
   _UpdateUI(ipc_id);
   m_active_session = ipc_id;
   m_toolbar_session = ipc_id;
+  m_toolbar_profile_session = ipc_id;
   m_ui->SetToolbarEnabled(true);
 }
 
 void RimeWithWeaselHandler::FocusOut(DWORD param, WeaselSessionId ipc_id) {
   DLOG(INFO) << "Focus out: ipc_id = " << ipc_id;
+  if (param & WEASEL_FOCUS_PROFILE_EVENT) {
+    if (m_toolbar_profile_session == ipc_id) {
+      m_toolbar_profile_session = 0;
+      m_ui->SetToolbarEnabled(false);
+    }
+    return;
+  }
   if (m_active_session == ipc_id) {
     if (m_ui)
       m_ui->Hide();
@@ -408,7 +419,6 @@ void RimeWithWeaselHandler::UpdateInputPosition(RECT const& rc,
     m_active_session = ipc_id;
   }
   m_toolbar_session = ipc_id;
-  m_ui->SetToolbarEnabled(true);
 }
 
 std::string RimeWithWeaselHandler::m_message_type;
@@ -527,8 +537,11 @@ void RimeWithWeaselHandler::SetOption(WeaselSessionId ipc_id,
                                       const std::string& opt,
                                       bool val) {
   const WeaselSessionId target =
-      ipc_id ? ipc_id
-             : (m_active_session ? m_active_session : m_toolbar_session);
+      ipc_id
+          ? ipc_id
+          : (m_toolbar_profile_session
+                 ? m_toolbar_profile_session
+                 : (m_active_session ? m_active_session : m_toolbar_session));
   if (!target ||
       m_session_status_map.find(target) == m_session_status_map.end())
     return;

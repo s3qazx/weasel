@@ -19,6 +19,22 @@ static void error_message(const WCHAR* msg) {
   }
 }
 
+static bool is_weasel_active_language_profile() {
+  CComPtr<ITfInputProcessorProfileMgr> profile_manager;
+  if (FAILED(profile_manager.CoCreateInstance(CLSID_TF_InputProcessorProfiles,
+                                              NULL, CLSCTX_ALL)))
+    return false;
+
+  TF_INPUTPROCESSORPROFILE profile = {};
+  if (profile_manager->GetActiveProfile(GUID_TFCAT_TIP_KEYBOARD, &profile) !=
+      S_OK)
+    return false;
+
+  return profile.dwProfileType == TF_PROFILETYPE_INPUTPROCESSOR &&
+         IsEqualCLSID(profile.clsid, c_clsidTextService) &&
+         IsEqualGUID(profile.guidProfile, c_guidProfile);
+}
+
 WeaselTSF::WeaselTSF() {
   _cRef = 1;
 
@@ -27,6 +43,7 @@ WeaselTSF::WeaselTSF() {
   _dwTextEditSinkCookie = TF_INVALID_COOKIE;
   _dwTextLayoutSinkCookie = TF_INVALID_COOKIE;
   _dwThreadFocusSinkCookie = TF_INVALID_COOKIE;
+  _dwActiveLanguageProfileNotifySinkCookie = TF_INVALID_COOKIE;
   _fTestKeyDownPending = FALSE;
   _fTestKeyUpPending = FALSE;
 
@@ -66,6 +83,8 @@ STDMETHODIMP WeaselTSF::QueryInterface(REFIID riid, void** ppvObject) {
     *ppvObject = (ITfEditSession*)this;
   else if (IsEqualIID(riid, IID_ITfThreadFocusSink))
     *ppvObject = (ITfThreadFocusSink*)this;
+  else if (IsEqualIID(riid, IID_ITfActiveLanguageProfileNotifySink))
+    *ppvObject = (ITfActiveLanguageProfileNotifySink*)this;
   else if (IsEqualIID(riid, IID_ITfDisplayAttributeProvider))
     *ppvObject = (ITfDisplayAttributeProvider*)this;
 
@@ -97,6 +116,8 @@ STDMETHODIMP WeaselTSF::Activate(ITfThreadMgr* pThreadMgr,
 }
 
 STDMETHODIMP WeaselTSF::Deactivate() {
+  _UninitActiveLanguageProfileNotifySink();
+  m_client.SetActiveLanguageProfile(false);
   m_client.EndSession();
 
   _InitTextEditSink(com_ptr<ITfDocumentMgr>());
@@ -110,7 +131,7 @@ STDMETHODIMP WeaselTSF::Deactivate() {
 
   _UninitCompartment();
 
-  _UninitThreadMgrEventSink();
+  _UninitThreadFocusSink();
 
   _pThreadMgr = NULL;
 
@@ -162,6 +183,8 @@ STDMETHODIMP WeaselTSF::ActivateEx(ITfThreadMgr* pThreadMgr,
     goto ExitError;
 
   _EnsureServerConnected();
+  _InitActiveLanguageProfileNotifySink();
+  m_client.SetActiveLanguageProfile(is_weasel_active_language_profile());
 
   return S_OK;
 
@@ -199,24 +222,52 @@ BOOL WeaselTSF::_InitThreadFocusSink() {
   return TRUE;
 }
 void WeaselTSF::_UninitThreadFocusSink() {
+  if (_dwThreadFocusSinkCookie == TF_INVALID_COOKIE || _pThreadMgr == NULL)
+    return;
+  com_ptr<ITfSource> pSource;
+  if (SUCCEEDED(_pThreadMgr->QueryInterface(&pSource)))
+    pSource->UnadviseSink(_dwThreadFocusSinkCookie);
+  _dwThreadFocusSinkCookie = TF_INVALID_COOKIE;
+}
+
+BOOL WeaselTSF::_InitActiveLanguageProfileNotifySink() {
   com_ptr<ITfSource> pSource;
   if (FAILED(_pThreadMgr->QueryInterface(&pSource)))
+    return FALSE;
+  if (FAILED(pSource->AdviseSink(IID_ITfActiveLanguageProfileNotifySink,
+                                 (ITfActiveLanguageProfileNotifySink*)this,
+                                 &_dwActiveLanguageProfileNotifySinkCookie))) {
+    _dwActiveLanguageProfileNotifySinkCookie = TF_INVALID_COOKIE;
+    return FALSE;
+  }
+  return TRUE;
+}
+
+void WeaselTSF::_UninitActiveLanguageProfileNotifySink() {
+  if (_dwActiveLanguageProfileNotifySinkCookie == TF_INVALID_COOKIE ||
+      _pThreadMgr == NULL)
     return;
-  if (FAILED(pSource->UnadviseSink(_dwThreadFocusSinkCookie)))
-    return;
+  com_ptr<ITfSource> pSource;
+  if (SUCCEEDED(_pThreadMgr->QueryInterface(&pSource)))
+    pSource->UnadviseSink(_dwActiveLanguageProfileNotifySinkCookie);
+  _dwActiveLanguageProfileNotifySinkCookie = TF_INVALID_COOKIE;
 }
 
 STDMETHODIMP WeaselTSF::OnActivated(REFCLSID clsid,
                                     REFGUID guidProfile,
                                     BOOL isActivated) {
-  if (!IsEqualCLSID(clsid, c_clsidTextService)) {
+  if (!IsEqualCLSID(clsid, c_clsidTextService) ||
+      !IsEqualGUID(guidProfile, c_guidProfile)) {
     return S_OK;
   }
 
   if (isActivated) {
+    _EnsureServerConnected();
+    m_client.SetActiveLanguageProfile(true);
     _ShowLanguageBar(TRUE);
     _UpdateLanguageBar(_status);
   } else {
+    m_client.SetActiveLanguageProfile(false);
     _DeleteCandidateList();
     _ShowLanguageBar(FALSE);
   }

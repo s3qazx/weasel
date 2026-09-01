@@ -192,8 +192,8 @@ void FloatingToolbar::Refresh() {
   const weasel::Status& status = ui_.status();
   const weasel::UIStyle& style = ui_.style();
   const weasel::FloatingToolbarConfig& config = ui_.toolbar_config();
-  state.visible = config.show;
   state.enabled = ui_.ToolbarEnabled();
+  state.visible = config.show && state.enabled;
   state.ascii_mode = status.ascii_mode;
   state.full_shape = status.full_shape;
   state.ascii_punct = status.ascii_punct;

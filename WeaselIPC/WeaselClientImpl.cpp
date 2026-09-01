@@ -138,6 +138,13 @@ void ClientImpl::FocusOut() {
   _SendMessage(WEASEL_IPC_FOCUS_OUT, 0, session_id);
 }
 
+void ClientImpl::SetActiveLanguageProfile(bool active) {
+  if (!_Active())
+    return;
+  _SendMessage(active ? WEASEL_IPC_FOCUS_IN : WEASEL_IPC_FOCUS_OUT,
+               WEASEL_FOCUS_PROFILE_EVENT, session_id);
+}
+
 void ClientImpl::TrayCommand(UINT menuId) {
   _SendMessage(WEASEL_IPC_TRAY_COMMAND, menuId, session_id);
 }
@@ -261,6 +268,10 @@ void Client::FocusIn() {
 
 void Client::FocusOut() {
   m_pImpl->FocusOut();
+}
+
+void Client::SetActiveLanguageProfile(bool active) {
+  m_pImpl->SetActiveLanguageProfile(active);
 }
 
 void Client::StartSession() {

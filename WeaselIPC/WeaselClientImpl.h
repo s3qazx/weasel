@@ -26,6 +26,7 @@ class ClientImpl {
   void UpdateInputPosition(RECT const& rc);
   void FocusIn();
   void FocusOut();
+  void SetActiveLanguageProfile(bool active);
   void TrayCommand(UINT menuId);
   bool SetOption(RimeOption option, bool value);
   bool GetResponseData(ResponseHandler const& handler);
