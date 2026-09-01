@@ -44,11 +44,17 @@ class FloatingToolbar
 
  private:
   struct State {
+    bool visible = true;
     bool enabled = false;
     bool ascii_mode = false;
     bool full_shape = false;
     bool ascii_punct = false;
     bool simplified = false;
+    std::wstring font_face = L"Microsoft YaHei UI";
+    int font_point = 14;
+    int button_width = 46;
+    int height = 38;
+    int corner_radius = 8;
     int back_color = 0;
     int text_color = 0;
     int border_color = 0;
@@ -57,7 +63,7 @@ class FloatingToolbar
   };
 
   static constexpr UINT kRefreshMessage = WM_APP + 0x31;
-  static constexpr int kButtonCount = 5;
+  static constexpr int kButtonCount = 4;
 
   LRESULT OnCreate(UINT, WPARAM, LPARAM, BOOL&);
   LRESULT OnDestroy(UINT, WPARAM, LPARAM, BOOL&);
@@ -74,15 +80,17 @@ class FloatingToolbar
   LRESULT OnRefresh(UINT, WPARAM, LPARAM, BOOL&);
 
   int Scale(int value) const;
+  int ScaleSystemMetric(int index) const;
   void UpdateDpi();
   void UpdateMetrics();
   void RecreateFonts();
   void RestorePosition();
   void SavePosition() const;
   void FinishDrag();
+  void ResetInteraction();
   void ClampPosition(int& x, int& y) const;
   int HitTestButton(const CPoint& point) const;
-  bool IsGrip(const CPoint& point) const;
+  bool IsButtonEnabled(int index, const State& state) const;
   void InvokeAction(int index, const State& state);
   State GetState() const;
 
@@ -92,7 +100,12 @@ class FloatingToolbar
   UINT dpi_ = 96;
   int width_ = 0;
   int height_ = 0;
-  CRect grip_rect_;
+  int font_point_ = 14;
+  int button_width_ = 46;
+  int toolbar_height_ = 38;
+  int corner_radius_ = 8;
+  std::wstring font_face_ = L"Microsoft YaHei UI";
+  bool visible_ = false;
   CRect button_rects_[kButtonCount];
   int hover_ = -1;
   int pressed_ = -1;
@@ -101,5 +114,4 @@ class FloatingToolbar
   CPoint drag_start_cursor_;
   CPoint drag_start_window_;
   HFONT font_ = nullptr;
-  HFONT symbol_font_ = nullptr;
 };

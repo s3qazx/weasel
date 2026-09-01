@@ -1,7 +1,7 @@
 # Weasel settings
 # encoding: utf-8
 
-config_version: "0.23"
+config_version: "0.24"
 
 app_options:
   cmd.exe:
@@ -25,6 +25,13 @@ style:
   font_point: 14
   label_font_point: 14
   comment_font_point: 14
+  toolbar:
+    show: true
+    font_face: Microsoft YaHei UI
+    font_point: 14
+    button_width: 46
+    height: 38
+    corner_radius: 8
   candidate_abbreviate_length: 0
   click_to_capture: false
   horizontal: false

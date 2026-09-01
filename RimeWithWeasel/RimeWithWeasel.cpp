@@ -66,6 +66,7 @@ RimeWithWeaselHandler::~RimeWithWeaselHandler() {
 
 bool add_session = false;
 void _UpdateUIStyle(RimeConfig* config, UI* ui, bool initialize);
+static void _UpdateFloatingToolbarConfig(RimeConfig* config, UI* ui);
 bool _UpdateUIStyleColor(RimeConfig* config,
                          UIStyle& style,
                          const std::string& color = std::string());
@@ -1210,6 +1211,35 @@ void RimeWithWeaselHandler::_UpdateShowNotifications(RimeConfig* config,
 }
 
 // update ui's style parameters, ui has been check before referenced
+static void _UpdateFloatingToolbarConfig(RimeConfig* config, UI* ui) {
+  FloatingToolbarConfig toolbar;
+  Bool show = toolbar.show ? True : False;
+  if (rime_api->config_get_bool(config, "style/toolbar/show", &show))
+    toolbar.show = !!show;
+
+  constexpr int kBufferSize = 255;
+  char buffer[kBufferSize + 1] = {0};
+  if (rime_api->config_get_string(config, "style/toolbar/font_face", buffer,
+                                  kBufferSize))
+    toolbar.font_face = u8tow(buffer);
+
+  int value = 0;
+  if (rime_api->config_get_int(config, "style/toolbar/font_point", &value))
+    toolbar.font_point = (std::max)(8, (std::min)(value, 28));
+  if (rime_api->config_get_int(config, "style/toolbar/button_width", &value))
+    toolbar.button_width = (std::max)(28, (std::min)(value, 96));
+  if (rime_api->config_get_int(config, "style/toolbar/height", &value))
+    toolbar.height = (std::max)(28, (std::min)(value, 72));
+  if (rime_api->config_get_int(config, "style/toolbar/corner_radius", &value))
+    toolbar.corner_radius = (std::max)(0, (std::min)(value, 72));
+
+  const int font_height = MulDiv(toolbar.font_point, 96, 72);
+  toolbar.button_width = (std::max)(toolbar.button_width, font_height * 2 + 8);
+  toolbar.height = (std::max)(toolbar.height, font_height + 12);
+  toolbar.corner_radius = (std::min)(toolbar.corner_radius, toolbar.height / 2);
+  ui->toolbar_config() = toolbar;
+}
+
 static void _UpdateUIStyle(RimeConfig* config, UI* ui, bool initialize) {
   UIStyle& style(ui->style());
   const std::function<void(std::wstring&)> rmspace = [](std::wstring& str) {
@@ -1409,6 +1439,8 @@ static void _UpdateUIStyle(RimeConfig* config, UI* ui, bool initialize) {
   if (initialize && rime_api->config_get_string(config, "style/color_scheme",
                                                 buffer, BUF_SIZE))
     _UpdateUIStyleColor(config, style);
+  if (initialize)
+    _UpdateFloatingToolbarConfig(config, ui);
 }
 // load color configs to style, by "style/color_scheme" or specific scheme name
 // "color" which is default empty

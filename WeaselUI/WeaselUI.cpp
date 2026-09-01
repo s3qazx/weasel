@@ -107,7 +107,6 @@ bool UI::Create(HWND parent) {
       pimpl_->panel.DestroyWindow();
       return false;
     }
-    pimpl_->toolbar.Show();
   }
   return true;
 }

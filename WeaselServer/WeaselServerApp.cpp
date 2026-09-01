@@ -22,9 +22,6 @@ WeaselServerApp::WeaselServerApp()
       case weasel::ToolbarAction::SIMPLIFICATION:
         m_server.SetOption(weasel::RimeOption::SIMPLIFICATION, value);
         break;
-      case weasel::ToolbarAction::SETTINGS:
-        execute(install_dir() / L"WeaselDeployer.exe", std::wstring());
-        break;
     }
   });
   SetupMenuHandlers();

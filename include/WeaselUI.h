@@ -22,7 +22,15 @@ enum class ToolbarAction {
   FULL_SHAPE,
   ASCII_PUNCT,
   SIMPLIFICATION,
-  SETTINGS,
+};
+
+struct FloatingToolbarConfig {
+  bool show = true;
+  std::wstring font_face = L"Microsoft YaHei UI";
+  int font_point = 14;
+  int button_width = 46;
+  int height = 38;
+  int corner_radius = 8;
 };
 
 class UIImpl;
@@ -78,6 +86,10 @@ class UI {
   bool& InServer() { return in_server_; }
   bool ToolbarEnabled() const { return toolbar_enabled_; }
   void SetToolbarEnabled(bool enabled);
+  FloatingToolbarConfig& toolbar_config() { return toolbar_config_; }
+  const FloatingToolbarConfig& toolbar_config() const {
+    return toolbar_config_;
+  }
 
   std::function<void(size_t* const, size_t* const, bool* const, bool* const)>&
   uiCallback() {
@@ -109,6 +121,7 @@ class UI {
   UIStyle ostyle_;
   bool in_server_;
   bool toolbar_enabled_ = false;
+  FloatingToolbarConfig toolbar_config_;
   std::function<void(size_t* const, size_t* const, bool* const, bool* const)>
       _UICallback;
   std::function<void(ToolbarAction, bool)> _ToolbarCallback;

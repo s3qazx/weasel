@@ -3,6 +3,7 @@
 
 #include <ShellScalingApi.h>
 #include <algorithm>
+#include <cstdlib>
 #include <cwchar>
 
 #pragma comment(lib, "Shcore.lib")
@@ -42,12 +43,23 @@ FloatingToolbar::FloatingToolbar(weasel::UI& ui) : ui_(ui) {}
 FloatingToolbar::~FloatingToolbar() {
   if (font_)
     DeleteObject(font_);
-  if (symbol_font_)
-    DeleteObject(symbol_font_);
 }
 
 int FloatingToolbar::Scale(int value) const {
   return MulDiv(value, dpi_, 96);
+}
+
+int FloatingToolbar::ScaleSystemMetric(int index) const {
+  POINT origin = {0, 0};
+  HMONITOR primary = MonitorFromPoint(origin, MONITOR_DEFAULTTOPRIMARY);
+  UINT primary_dpi_x = 96;
+  UINT primary_dpi_y = 96;
+  if (primary)
+    GetDpiForMonitor(primary, MDT_EFFECTIVE_DPI, &primary_dpi_x,
+                     &primary_dpi_y);
+  const UINT primary_dpi = index == SM_CYDRAG ? primary_dpi_y : primary_dpi_x;
+  return (std::max)(1, MulDiv(GetSystemMetrics(index), static_cast<int>(dpi_),
+                              static_cast<int>(primary_dpi)));
 }
 
 void FloatingToolbar::UpdateDpi() {
@@ -60,18 +72,19 @@ void FloatingToolbar::UpdateDpi() {
 }
 
 void FloatingToolbar::UpdateMetrics() {
-  const int grip_width = Scale(18);
-  const int button_width = Scale(42);
-  width_ = grip_width + button_width * kButtonCount;
-  height_ = Scale(38);
-  grip_rect_.SetRect(0, 0, grip_width, height_);
+  const int button_width = Scale(button_width_);
+  width_ = button_width * kButtonCount;
+  height_ = Scale(toolbar_height_);
   for (int i = 0; i < kButtonCount; ++i) {
-    const int left = grip_width + button_width * i;
+    const int left = button_width * i;
     button_rects_[i].SetRect(left, 0, left + button_width, height_);
   }
 
-  HRGN region =
-      CreateRoundRectRgn(0, 0, width_ + 1, height_ + 1, Scale(8), Scale(8));
+  HRGN region = corner_radius_ > 0
+                    ? CreateRoundRectRgn(0, 0, width_ + 1, height_ + 1,
+                                         Scale(corner_radius_ * 2),
+                                         Scale(corner_radius_ * 2))
+                    : CreateRectRgn(0, 0, width_ + 1, height_ + 1);
   if (region && !SetWindowRgn(region, TRUE))
     DeleteObject(region);
 }
@@ -80,10 +93,6 @@ void FloatingToolbar::RecreateFonts() {
   if (font_) {
     DeleteObject(font_);
     font_ = nullptr;
-  }
-  if (symbol_font_) {
-    DeleteObject(symbol_font_);
-    symbol_font_ = nullptr;
   }
 
   NONCLIENTMETRICSW metrics = {sizeof(metrics)};
@@ -94,13 +103,11 @@ void FloatingToolbar::RecreateFonts() {
   } else {
     wcscpy_s(log_font.lfFaceName, L"Microsoft YaHei UI");
   }
-  log_font.lfHeight = -Scale(14);
+  if (!font_face_.empty())
+    wcsncpy_s(log_font.lfFaceName, LF_FACESIZE, font_face_.c_str(), _TRUNCATE);
+  log_font.lfHeight = -MulDiv(font_point_, static_cast<int>(dpi_), 72);
   log_font.lfWeight = FW_NORMAL;
   font_ = CreateFontIndirectW(&log_font);
-
-  wcscpy_s(log_font.lfFaceName, L"Segoe UI Symbol");
-  log_font.lfHeight = -Scale(15);
-  symbol_font_ = CreateFontIndirectW(&log_font);
 }
 
 void FloatingToolbar::ClampPosition(int& x, int& y) const {
@@ -130,8 +137,8 @@ void FloatingToolbar::RestorePosition() {
     HMONITOR monitor = MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST);
     MONITORINFO info = {sizeof(info)};
     if (monitor && GetMonitorInfoW(monitor, &info)) {
-      x = info.rcWork.right - width_ - Scale(24);
-      y = info.rcWork.bottom - height_ - Scale(24);
+      x = static_cast<int>(info.rcWork.right) - width_ - Scale(24);
+      y = static_cast<int>(info.rcWork.bottom) - height_ - Scale(24);
     }
   }
   ClampPosition(x, y);
@@ -157,11 +164,22 @@ void FloatingToolbar::SavePosition() const {
 void FloatingToolbar::FinishDrag() {
   CRect rect;
   GetWindowRect(&rect);
-  int x = rect.left;
-  int y = rect.top;
+  int x = static_cast<int>(rect.left);
+  int y = static_cast<int>(rect.top);
   ClampPosition(x, y);
   SetWindowPos(HWND_TOPMOST, x, y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
   SavePosition();
+}
+
+void FloatingToolbar::ResetInteraction() {
+  if (dragging_ && IsWindow())
+    FinishDrag();
+  pressed_ = -1;
+  hover_ = -1;
+  dragging_ = false;
+  tracking_mouse_ = false;
+  if (GetCapture() == m_hWnd)
+    ReleaseCapture();
 }
 
 FloatingToolbar::State FloatingToolbar::GetState() const {
@@ -173,11 +191,18 @@ void FloatingToolbar::Refresh() {
   State state;
   const weasel::Status& status = ui_.status();
   const weasel::UIStyle& style = ui_.style();
+  const weasel::FloatingToolbarConfig& config = ui_.toolbar_config();
+  state.visible = config.show;
   state.enabled = ui_.ToolbarEnabled();
   state.ascii_mode = status.ascii_mode;
   state.full_shape = status.full_shape;
   state.ascii_punct = status.ascii_punct;
   state.simplified = status.simplified;
+  state.font_face = config.font_face;
+  state.font_point = config.font_point;
+  state.button_width = config.button_width;
+  state.height = config.height;
+  state.corner_radius = config.corner_radius;
   state.back_color = style.back_color;
   state.text_color = style.candidate_text_color;
   state.border_color = style.border_color;
@@ -205,12 +230,14 @@ int FloatingToolbar::HitTestButton(const CPoint& point) const {
   return -1;
 }
 
-bool FloatingToolbar::IsGrip(const CPoint& point) const {
-  return grip_rect_.PtInRect(point);
+bool FloatingToolbar::IsButtonEnabled(int index, const State& state) const {
+  if (index < 0 || index >= kButtonCount)
+    return false;
+  return state.enabled;
 }
 
 void FloatingToolbar::InvokeAction(int index, const State& state) {
-  if (index < 0 || index >= kButtonCount || (index < 4 && !state.enabled))
+  if (!IsButtonEnabled(index, state))
     return;
 
   weasel::ToolbarAction action;
@@ -231,9 +258,6 @@ void FloatingToolbar::InvokeAction(int index, const State& state) {
     case 3:
       action = weasel::ToolbarAction::SIMPLIFICATION;
       value = !state.simplified;
-      break;
-    case 4:
-      action = weasel::ToolbarAction::SETTINGS;
       break;
     default:
       return;
@@ -261,21 +285,13 @@ void FloatingToolbar::DoPaint(CDCHandle dc) {
   dc.FillSolidRect(client, background);
   dc.SetBkMode(TRANSPARENT);
 
-  for (int row = 0; row < 3; ++row) {
-    for (int column = 0; column < 2; ++column) {
-      const int x = grip_rect_.left + Scale(6 + column * 5);
-      const int y = grip_rect_.top + height_ / 2 - Scale(5) + Scale(row * 5);
-      dc.FillSolidRect(x, y, Scale(2), Scale(2), disabled_text);
-    }
-  }
-
   const wchar_t* labels[kButtonCount] = {
       state.ascii_mode ? L"\x82F1" : L"\x4E2D",
       state.full_shape ? L"\x5168" : L"\x534A",
       state.ascii_punct ? L".," : L"\x3002\xFF0C",
-      state.simplified ? L"\x7B80" : L"\x7E41", L"\x2699"};
+      state.simplified ? L"\x7B80" : L"\x7E41"};
   for (int i = 0; i < kButtonCount; ++i) {
-    const bool enabled = i == kButtonCount - 1 || state.enabled;
+    const bool enabled = IsButtonEnabled(i, state);
     const bool hot = i == hover_ && enabled;
     const bool down = i == pressed_ && hot;
     CRect button = button_rects_[i];
@@ -286,15 +302,14 @@ void FloatingToolbar::DoPaint(CDCHandle dc) {
                        down ? BlendColor(text, highlight, 24) : highlight);
     }
     dc.SetTextColor(enabled ? (hot ? highlight_text : text) : disabled_text);
-    HFONT old_font = dc.SelectFont(
-        i == kButtonCount - 1 && symbol_font_ ? symbol_font_ : font_);
+    HFONT old_font = dc.SelectFont(font_);
     dc.DrawText(labels[i], -1, &button,
                 DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
     dc.SelectFont(old_font);
   }
 
-  for (int i = 0; i < kButtonCount; ++i) {
-    const int x = button_rects_[i].left;
+  for (int i = 1; i < kButtonCount; ++i) {
+    const int x = static_cast<int>(button_rects_[i].left);
     dc.FillSolidRect(x, Scale(9), 1, height_ - Scale(18), border);
   }
   dc.Draw3dRect(client, border, border);
@@ -310,15 +325,10 @@ LRESULT FloatingToolbar::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 }
 
 LRESULT FloatingToolbar::OnDestroy(UINT, WPARAM, LPARAM, BOOL&) {
-  if (GetCapture() == m_hWnd)
-    ReleaseCapture();
+  ResetInteraction();
   if (font_) {
     DeleteObject(font_);
     font_ = nullptr;
-  }
-  if (symbol_font_) {
-    DeleteObject(symbol_font_);
-    symbol_font_ = nullptr;
   }
   return 0;
 }
@@ -336,8 +346,8 @@ LRESULT FloatingToolbar::OnDpiChanged(UINT,
   UpdateMetrics();
   RecreateFonts();
   const RECT* suggested = reinterpret_cast<const RECT*>(l_param);
-  int x = suggested->left;
-  int y = suggested->top;
+  int x = static_cast<int>(suggested->left);
+  int y = static_cast<int>(suggested->top);
   ClampPosition(x, y);
   SetWindowPos(HWND_TOPMOST, x, y, width_, height_, SWP_NOACTIVATE);
   if (dragging_) {
@@ -367,19 +377,13 @@ LRESULT FloatingToolbar::OnLeftButtonDown(UINT,
                                           BOOL& handled) {
   const CPoint point(GET_X_LPARAM(l_param), GET_Y_LPARAM(l_param));
   pressed_ = HitTestButton(point);
-  const State state = GetState();
-  if (pressed_ >= 0 && pressed_ < kButtonCount - 1 && !state.enabled)
-    pressed_ = -1;
   if (pressed_ >= 0) {
-    SetCapture();
-    Invalidate();
-  } else if (IsGrip(point)) {
-    dragging_ = true;
     GetCursorPos(&drag_start_cursor_);
     CRect rect;
     GetWindowRect(&rect);
     drag_start_window_.SetPoint(rect.left, rect.top);
     SetCapture();
+    Invalidate();
   }
   handled = TRUE;
   return 0;
@@ -416,11 +420,27 @@ LRESULT FloatingToolbar::OnMouseMove(UINT,
     tracking_mouse_ = true;
   }
 
-  if (dragging_) {
-    CPoint cursor;
+  CPoint cursor;
+  if (pressed_ >= 0 && GetCapture() == m_hWnd) {
     GetCursorPos(&cursor);
-    const int x = drag_start_window_.x + cursor.x - drag_start_cursor_.x;
-    const int y = drag_start_window_.y + cursor.y - drag_start_cursor_.y;
+    const int delta_x = static_cast<int>(cursor.x - drag_start_cursor_.x);
+    const int delta_y = static_cast<int>(cursor.y - drag_start_cursor_.y);
+    if (std::abs(delta_x) >= ScaleSystemMetric(SM_CXDRAG) ||
+        std::abs(delta_y) >= ScaleSystemMetric(SM_CYDRAG)) {
+      pressed_ = -1;
+      hover_ = -1;
+      dragging_ = true;
+      SetCursor(LoadCursor(nullptr, IDC_SIZEALL));
+      Invalidate();
+    }
+  }
+
+  if (dragging_) {
+    GetCursorPos(&cursor);
+    const int x = static_cast<int>(drag_start_window_.x + cursor.x -
+                                   drag_start_cursor_.x);
+    const int y = static_cast<int>(drag_start_window_.y + cursor.y -
+                                   drag_start_cursor_.y);
     SetWindowPos(HWND_TOPMOST, x, y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
   } else {
     const CPoint point(GET_X_LPARAM(l_param), GET_Y_LPARAM(l_param));
@@ -458,17 +478,56 @@ LRESULT FloatingToolbar::OnSetCursor(UINT, WPARAM, LPARAM, BOOL& handled) {
   ScreenToClient(&point);
   const int button = HitTestButton(point);
   const State state = GetState();
-  const bool enabled_button =
-      button == kButtonCount - 1 || (button >= 0 && state.enabled);
-  LPCTSTR cursor = IsGrip(point)    ? IDC_SIZEALL
-                   : enabled_button ? IDC_HAND
-                                    : IDC_ARROW;
+  LPCTSTR cursor = dragging_                        ? IDC_SIZEALL
+                   : IsButtonEnabled(button, state) ? IDC_HAND
+                                                    : IDC_ARROW;
   SetCursor(LoadCursor(nullptr, cursor));
   handled = TRUE;
   return TRUE;
 }
 
 LRESULT FloatingToolbar::OnRefresh(UINT, WPARAM, LPARAM, BOOL&) {
+  const State state = GetState();
+  const bool metrics_changed = state.button_width != button_width_ ||
+                               state.height != toolbar_height_ ||
+                               state.corner_radius != corner_radius_;
+  const bool font_changed =
+      state.font_face != font_face_ || state.font_point != font_point_;
+
+  button_width_ = state.button_width;
+  toolbar_height_ = state.height;
+  corner_radius_ = state.corner_radius;
+  font_face_ = state.font_face;
+  font_point_ = state.font_point;
+
+  if (metrics_changed || font_changed) {
+    CRect rect;
+    GetWindowRect(&rect);
+    if (metrics_changed)
+      UpdateMetrics();
+    if (font_changed)
+      RecreateFonts();
+    int x = static_cast<int>(rect.left);
+    int y = static_cast<int>(rect.top);
+    ClampPosition(x, y);
+    SetWindowPos(HWND_TOPMOST, x, y, width_, height_, SWP_NOACTIVATE);
+    if (dragging_) {
+      GetCursorPos(&drag_start_cursor_);
+      drag_start_window_.SetPoint(x, y);
+    }
+    SavePosition();
+  }
+
+  if (!state.visible) {
+    ResetInteraction();
+    ShowWindow(SW_HIDE);
+    visible_ = false;
+    return 0;
+  }
+  if (!visible_) {
+    Show();
+    visible_ = true;
+  }
   Invalidate();
   return 0;
 }
