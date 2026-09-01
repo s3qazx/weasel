@@ -27,6 +27,9 @@ class PipeServer : public PipeChannel<DWORD, PipeMessage> {
 using namespace weasel;
 
 extern CAppModule _Module;
+static std::mutex g_api_mutex;
+static const char* const kRimeOptionNames[] = {"ascii_mode", "full_shape",
+                                               "ascii_punct", "simplification"};
 
 ServerImpl::ServerImpl()
     : m_pRequestHandler(NULL),
@@ -57,10 +60,24 @@ LRESULT ServerImpl::OnColorChange(UINT uMsg,
                                   WPARAM wParam,
                                   LPARAM lParam,
                                   BOOL& bHandled) {
-  if (IsUserDarkMode() != m_darkMode) {
-    m_darkMode = IsUserDarkMode();
-    m_pRequestHandler->UpdateColorTheme(m_darkMode);
+  if (!m_pRequestHandler)
+    return 0;
+  const BOOL dark_mode = IsUserDarkMode();
+  if (dark_mode == m_darkMode) {
+    m_pendingDarkMode = -1;
+    return 0;
   }
+
+  std::unique_lock lock(g_api_mutex, std::try_to_lock);
+  if (!lock.owns_lock()) {
+    m_pendingDarkMode = dark_mode;
+    SetTimer(kSetOptionRetryTimer, 10);
+    return 0;
+  }
+
+  m_pendingDarkMode = -1;
+  m_darkMode = dark_mode;
+  m_pRequestHandler->UpdateColorTheme(m_darkMode);
   return 0;
 }
 
@@ -85,8 +102,45 @@ LRESULT ServerImpl::OnDestroy(UINT uMsg,
                               WPARAM wParam,
                               LPARAM lParam,
                               BOOL& bHandled) {
+  KillTimer(kSetOptionRetryTimer);
   bHandled = FALSE;
   return 1;
+}
+
+LRESULT ServerImpl::OnTimer(UINT uMsg,
+                            WPARAM wParam,
+                            LPARAM lParam,
+                            BOOL& bHandled) {
+  if (wParam != kSetOptionRetryTimer) {
+    bHandled = FALSE;
+    return 0;
+  }
+  if (!m_pRequestHandler) {
+    KillTimer(kSetOptionRetryTimer);
+    return 0;
+  }
+
+  std::unique_lock lock(g_api_mutex, std::try_to_lock);
+  if (!lock.owns_lock())
+    return 0;
+
+  KillTimer(kSetOptionRetryTimer);
+  if (m_pendingDarkMode >= 0) {
+    const BOOL dark_mode = m_pendingDarkMode != 0;
+    m_pendingDarkMode = -1;
+    if (dark_mode != m_darkMode) {
+      m_darkMode = dark_mode;
+      m_pRequestHandler->UpdateColorTheme(m_darkMode);
+    }
+  }
+  for (WORD option = 0; option < _countof(m_pendingOptionValues); ++option) {
+    const int value = m_pendingOptionValues[option];
+    if (value < 0)
+      continue;
+    m_pendingOptionValues[option] = -1;
+    m_pRequestHandler->SetOption(0, kRimeOptionNames[option], value != 0);
+  }
+  return 0;
 }
 
 LRESULT ServerImpl::OnQueryEndSystemSession(UINT uMsg,
@@ -175,10 +229,6 @@ int ServerImpl::Stop() {
   return 0;
 }
 
-static std::mutex g_api_mutex;
-static const char* const kRimeOptionNames[] = {"ascii_mode", "full_shape",
-                                               "ascii_punct", "simplification"};
-
 int ServerImpl::Run() {
   // This workaround causes a VC internal error:
   // void PipeServer::Listen(ServerHandler handler);
@@ -218,10 +268,12 @@ LRESULT ServerImpl::OnSetOptionMessage(UINT uMsg,
 
   std::unique_lock lock(g_api_mutex, std::try_to_lock);
   if (!lock.owns_lock()) {
-    PostMessage(uMsg, wParam, lParam);
+    m_pendingOptionValues[option] = HIWORD(wParam) != 0;
+    SetTimer(kSetOptionRetryTimer, 10);
     return 0;
   }
 
+  m_pendingOptionValues[option] = -1;
   m_pRequestHandler->SetOption(0, kRimeOptionNames[option],
                                HIWORD(wParam) != 0);
   return 0;

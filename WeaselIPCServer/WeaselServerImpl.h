@@ -27,6 +27,7 @@ class ServerImpl : public CWindowImpl<ServerImpl, CWindow, ServerWinTraits>
   MESSAGE_HANDLER(WM_ENDSESSION, OnEndSystemSession)
   MESSAGE_HANDLER(WM_DWMCOLORIZATIONCOLORCHANGED, OnColorChange)
   MESSAGE_HANDLER(WM_SETTINGCHANGE, OnColorChange)
+  MESSAGE_HANDLER(WM_TIMER, OnTimer)
   MESSAGE_HANDLER(WM_COMMAND, OnCommand)
   MESSAGE_HANDLER(WM_WEASEL_SERVICE_NOTIFY, OnServiceNotifyMessage)
   MESSAGE_HANDLER(WM_WEASEL_SERVICE_SET_OPTION, OnSetOptionMessage)
@@ -36,6 +37,7 @@ class ServerImpl : public CWindowImpl<ServerImpl, CWindow, ServerWinTraits>
                         WPARAM wParam,
                         LPARAM lParam,
                         BOOL& bHandled);
+  LRESULT OnTimer(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
   LRESULT OnCreate(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
   LRESULT OnClose(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
   LRESULT OnDestroy(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
@@ -111,6 +113,9 @@ class ServerImpl : public CWindowImpl<ServerImpl, CWindow, ServerWinTraits>
   RequestHandler* m_pRequestHandler;  // reference
   std::map<UINT, CommandHandler> m_MenuHandlers;
   std::function<void()> m_trayRefreshCallback;
+  static constexpr UINT_PTR kSetOptionRetryTimer = 0x574f;
+  int m_pendingOptionValues[4] = {-1, -1, -1, -1};
+  int m_pendingDarkMode = -1;
   HMODULE m_hUser32Module;
   SecurityAttribute sa;
   BOOL m_darkMode;

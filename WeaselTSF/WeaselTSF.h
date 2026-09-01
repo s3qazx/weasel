@@ -7,9 +7,6 @@
 class CCandidateList;
 class CLangBarItemButton;
 class CCompartmentEventSink;
-namespace weasel {
-enum class ToolbarAction;
-}
 
 class WeaselTSF : public ITfTextInputProcessorEx,
                   public ITfThreadMgrEventSink,
@@ -157,7 +154,6 @@ class WeaselTSF : public ITfTextInputProcessorEx,
                         size_t* const hov,
                         bool* const next,
                         bool* const scroll_next);
-  void HandleToolbarAction(weasel::ToolbarAction action, bool value);
 
  private:
   /* ui callback functions private */

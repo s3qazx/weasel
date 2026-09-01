@@ -46,9 +46,14 @@ int WeaselServerApp::Run() {
   else
     win_sparkle_set_lang("en");
   win_sparkle_init();
-  m_ui.Create(m_server.GetHWnd());
+  if (!m_ui.Create(m_server.GetHWnd())) {
+    LOG(ERROR) << "Failed to create Weasel UI windows.";
+    win_sparkle_cleanup();
+    return -1;
+  }
 
   m_handler->Initialize();
+  m_ui.Refresh();
   m_handler->OnUpdateUI([this]() { tray_icon.RequestRefresh(); });
 
   tray_icon.Create(m_server.GetHWnd());

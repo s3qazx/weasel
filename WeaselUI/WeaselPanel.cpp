@@ -67,7 +67,6 @@ WeaselPanel::WeaselPanel(weasel::UI& ui)
       hide_candidates(false),
       pDWR(ui.pdwr()),
       _UICallback(ui.uiCallback()),
-      _ToolbarCallback(ui.toolbarCallback()),
       _m_gdiplusToken(0) {
   m_iconDisabled.LoadIconW(IDI_RELOAD, STATUS_ICON_SIZE, STATUS_ICON_SIZE,
                            LR_DEFAULTCOLOR);
@@ -100,143 +99,9 @@ WeaselPanel::~WeaselPanel() {
   // pDWR.reset();
 }
 
-bool WeaselPanel::_ToolbarIsVisible() const {
-  return !hide_candidates && m_candidateCount > 0 && _ToolbarCallback &&
-         m_style.layout_type != UIStyle::LAYOUT_VERTICAL_TEXT &&
-         NOT_FULLSCREENLAYOUT(m_style);
-}
-
-void WeaselPanel::_LayoutToolbar() {
-  m_toolbarRect.SetRect(0, 0, 0, 0);
-  m_toolbarWidth = 0;
-  for (auto& rect : m_toolbarRects)
-    rect.SetRect(0, 0, 0, 0);
-
-  if (!_ToolbarIsVisible())
-    return;
-
-  CRect contentRect = m_layout->GetContentRect();
-  const int padding = DPI_SCALE(5);
-  const int gap = DPI_SCALE(4);
-  const int cellWidth = max(DPI_SCALE(44), DPI_SCALE(m_style.font_point * 3));
-  const int width =
-      max(contentRect.Width(),
-          max(DPI_SCALE(240), cellWidth * TOOLBAR_BUTTON_COUNT + padding * 2));
-  const int height =
-      max(DPI_SCALE(36), DPI_SCALE(m_style.font_point * 4 / 3 + 12));
-  const int left = max(m_layout->offsetX, contentRect.left);
-  const int top = contentRect.bottom + gap;
-
-  m_toolbarRect.SetRect(left, top, left + width, top + height);
-  m_toolbarWidth = m_toolbarRect.right + m_layout->offsetX;
-
-  const int usableWidth = width - padding * 2;
-  int x = left + padding;
-  for (int i = 0; i < TOOLBAR_BUTTON_COUNT; ++i) {
-    const int right =
-        left + padding + usableWidth * (i + 1) / TOOLBAR_BUTTON_COUNT;
-    m_toolbarRects[i].SetRect(x, top + padding, right, top + height - padding);
-    x = right;
-  }
-}
-
-int WeaselPanel::_ToolbarHitTest(const CPoint& point) const {
-  if (!_ToolbarIsVisible())
-    return -1;
-  for (int i = 0; i < TOOLBAR_BUTTON_COUNT; ++i)
-    if (m_toolbarRects[i].PtInRect(point))
-      return i;
-  return -1;
-}
-
-void WeaselPanel::_InvokeToolbarAction(int index) {
-  ToolbarAction action;
-  bool value = false;
-  switch (index) {
-    case 0:
-      action = ToolbarAction::ASCII_MODE;
-      value = !m_status.ascii_mode;
-      break;
-    case 1:
-      action = ToolbarAction::FULL_SHAPE;
-      value = !m_status.full_shape;
-      break;
-    case 2:
-      action = ToolbarAction::ASCII_PUNCT;
-      value = !m_status.ascii_punct;
-      break;
-    case 3:
-      action = ToolbarAction::SIMPLIFICATION;
-      value = !m_status.simplified;
-      break;
-    case 4:
-      action = ToolbarAction::SETTINGS;
-      break;
-    default:
-      return;
-  }
-  if (_ToolbarCallback)
-    _ToolbarCallback(action, value);
-  if (IsWindow())
-    RedrawWindow();
-}
-
-void WeaselPanel::_DrawToolbar(CDCHandle dc, bool back) {
-  if (!_ToolbarIsVisible())
-    return;
-
-  const bool active[TOOLBAR_BUTTON_COUNT] = {
-      m_status.ascii_mode, m_status.full_shape, m_status.ascii_punct,
-      m_status.simplified, false};
-  if (back) {
-    _HighlightText(dc, m_toolbarRect, m_style.back_color, m_style.shadow_color,
-                   DPI_SCALE(m_style.round_corner_ex), BackType::BACKGROUND,
-                   IsToRoundStruct(), m_style.border_color);
-    for (int i = 0; i < TOOLBAR_BUTTON_COUNT; ++i) {
-      const bool hot = i == m_toolbarHover || i == m_toolbarPressed;
-      if (!hot && !active[i])
-        continue;
-      _HighlightText(
-          dc, m_toolbarRects[i],
-          hot ? m_style.hilited_back_color : m_style.candidate_back_color,
-          TRANS_COLOR, DPI_SCALE(m_style.round_corner), BackType::TEXT,
-          IsToRoundStruct(), TRANS_COLOR);
-    }
-    return;
-  }
-
-  const wchar_t* labels[TOOLBAR_BUTTON_COUNT] = {
-      m_status.ascii_mode ? L"\x82F1" : L"\x4E2D",
-      m_status.full_shape ? L"\x5168" : L"\x534A",
-      m_status.ascii_punct ? L".," : L"\x3002\xFF0C",
-      m_status.simplified ? L"\x7B80" : L"\x7E41", L"\x2699"};
-  ComPtr<IDWriteTextFormat1> format = pDWR->pTextFormat;
-  if (!format)
-    format = pDWR->pPreeditTextFormat;
-  for (int i = 0; i < TOOLBAR_BUTTON_COUNT; ++i) {
-    const std::wstring label(labels[i]);
-    CSize size;
-    m_layout->GetTextSizeDW(label, label.length(), format, pDWR, &size);
-    const CRect& button = m_toolbarRects[i];
-    CRect textRect(button.left + max(0, (button.Width() - size.cx) / 2),
-                   button.top + max(0, (button.Height() - size.cy) / 2),
-                   button.right, button.bottom);
-    const bool hot = i == m_toolbarHover || i == m_toolbarPressed;
-    _TextOut(textRect, label, label.length(),
-             hot ? m_style.hilited_candidate_text_color
-                 : m_style.candidate_text_color,
-             format.Get());
-  }
-}
-
 void WeaselPanel::_ResizeWindow() {
   CDCHandle dc = GetDC();
   CSize m_size = m_layout->GetContentSize();
-  _LayoutToolbar();
-  if (_ToolbarIsVisible()) {
-    m_size.cx = max(m_size.cx, m_toolbarWidth);
-    m_size.cy = max(m_size.cy, m_toolbarRect.bottom + m_layout->offsetY);
-  }
   SetWindowPos(NULL, 0, 0, m_size.cx, m_size.cy,
                SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOREDRAW);
   ReleaseDC(dc);
@@ -247,23 +112,19 @@ void WeaselPanel::_CreateLayout() {
     delete m_layout;
 
   Layout* layout = NULL;
-  UIStyle layoutStyle = m_style;
-  if (_ToolbarIsVisible())
-    layoutStyle.min_width =
-        max(layoutStyle.min_width, max(240, m_style.font_point * 15 + 12));
   if (m_style.layout_type == UIStyle::LAYOUT_VERTICAL_TEXT) {
-    layout = new VHorizontalLayout(layoutStyle, m_ctx, m_status, pDWR);
+    layout = new VHorizontalLayout(m_style, m_ctx, m_status, pDWR);
   } else {
     if (m_style.layout_type == UIStyle::LAYOUT_VERTICAL ||
         m_style.layout_type == UIStyle::LAYOUT_VERTICAL_FULLSCREEN) {
-      layout = new VerticalLayout(layoutStyle, m_ctx, m_status, pDWR);
+      layout = new VerticalLayout(m_style, m_ctx, m_status, pDWR);
     } else if (m_style.layout_type == UIStyle::LAYOUT_HORIZONTAL ||
                m_style.layout_type == UIStyle::LAYOUT_HORIZONTAL_FULLSCREEN) {
-      layout = new HorizontalLayout(layoutStyle, m_ctx, m_status, pDWR);
+      layout = new HorizontalLayout(m_style, m_ctx, m_status, pDWR);
     }
 
     if (IS_FULLSCREENLAYOUT(m_style)) {
-      layout = new FullScreenLayout(layoutStyle, m_ctx, m_status, m_inputPos,
+      layout = new FullScreenLayout(m_style, m_ctx, m_status, m_inputPos,
                                     layout, pDWR);
     }
   }
@@ -300,12 +161,6 @@ void WeaselPanel::Refresh() {
       (m_style.inline_preedit && m_candidateCount == 0) && !show_tips;
   hide_candidates = inline_no_candidates ||
                     (margin_negative && !show_tips && !show_schema_menu);
-  if (!_ToolbarIsVisible()) {
-    m_toolbarHover = -1;
-    m_toolbarPressed = -1;
-    if (::GetCapture() == m_hWnd)
-      ::ReleaseCapture();
-  }
 
   // only RedrawWindow if no need to hide candidates window, or
   // inline_no_candidates
@@ -444,27 +299,13 @@ LRESULT WeaselPanel::OnLeftClickedUp(UINT uMsg,
                                      WPARAM wParam,
                                      LPARAM lParam,
                                      BOOL& bHandled) {
+  if (hide_candidates) {
+    bHandled = true;
+    return 0;
+  }
   CPoint point;
   point.x = GET_X_LPARAM(lParam);
   point.y = GET_Y_LPARAM(lParam);
-
-  if (m_toolbarPressed >= 0) {
-    const int pressed = m_toolbarPressed;
-    m_toolbarPressed = -1;
-    if (::GetCapture() == m_hWnd)
-      ::ReleaseCapture();
-    if (_ToolbarHitTest(point) == pressed)
-      _InvokeToolbarAction(pressed);
-    else
-      RedrawWindow();
-    bHandled = true;
-    return 0;
-  }
-  if ((_ToolbarIsVisible() && m_toolbarRect.PtInRect(point)) ||
-      hide_candidates) {
-    bHandled = true;
-    return 0;
-  }
 
   ::KillTimer(m_hWnd, AUTOREV_TIMER);
   bar_scale_ = 1.0;
@@ -496,26 +337,13 @@ LRESULT WeaselPanel::OnLeftClickedDown(UINT uMsg,
                                        WPARAM wParam,
                                        LPARAM lParam,
                                        BOOL& bHandled) {
-  CPoint point;
-  point.x = GET_X_LPARAM(lParam);
-  point.y = GET_Y_LPARAM(lParam);
-
-  const int toolbarIndex = _ToolbarHitTest(point);
-  if (toolbarIndex >= 0) {
-    m_toolbarPressed = toolbarIndex;
-    ::SetCapture(m_hWnd);
-    RedrawWindow();
-    bHandled = true;
-    return 0;
-  }
-  if (_ToolbarIsVisible() && m_toolbarRect.PtInRect(point)) {
-    bHandled = true;
-    return 0;
-  }
   if (hide_candidates) {
     bHandled = true;
     return 0;
   }
+  CPoint point;
+  point.x = GET_X_LPARAM(lParam);
+  point.y = GET_Y_LPARAM(lParam);
 
   // capture
   if (m_style.click_to_capture) {
@@ -636,15 +464,7 @@ LRESULT WeaselPanel::OnMouseMove(UINT uMsg,
                                  WPARAM wParam,
                                  LPARAM lParam,
                                  BOOL& bHandled) {
-  CPoint point;
-  point.x = GET_X_LPARAM(lParam);
-  point.y = GET_Y_LPARAM(lParam);
-  const int toolbarHover = _ToolbarHitTest(point);
-  if (toolbarHover != m_toolbarHover) {
-    m_toolbarHover = toolbarHover;
-    RedrawWindow();
-  }
-  if (m_style.hover_type == UIStyle::NONE && toolbarHover < 0)
+  if (m_style.hover_type == UIStyle::NONE)
     return 0;
   if (m_mouse_entry == false) {
     TRACKMOUSEEVENT tme;
@@ -656,8 +476,9 @@ LRESULT WeaselPanel::OnMouseMove(UINT uMsg,
   }
   bHandled = true;
   m_mouse_entry = true;
-  if (toolbarHover >= 0)
-    return 0;
+  CPoint point;
+  point.x = GET_X_LPARAM(lParam);
+  point.y = GET_Y_LPARAM(lParam);
 
   // Ignore if mouse screen position not changed
   CPoint ptScreen = point;
@@ -699,23 +520,8 @@ LRESULT WeaselPanel::OnMouseLeave(UINT uMsg,
                                   LPARAM lParam,
                                   BOOL& bHandled) {
   m_hoverIndex = -1;
-  m_toolbarHover = -1;
-  if (::GetCapture() != m_hWnd)
-    m_toolbarPressed = -1;
-  RedrawWindow();
+  InvalidateRect(&rcw, true);
   m_mouse_entry = false;
-  return 0;
-}
-
-LRESULT WeaselPanel::OnCaptureChanged(UINT uMsg,
-                                      WPARAM wParam,
-                                      LPARAM lParam,
-                                      BOOL& bHandled) {
-  if (m_toolbarPressed >= 0) {
-    m_toolbarPressed = -1;
-    RedrawWindow();
-  }
-  bHandled = true;
   return 0;
 }
 
@@ -1248,10 +1054,6 @@ void WeaselPanel::DoPaint(CDCHandle dc) {
     }
     if (m_candidateCount)
       drawn |= _DrawCandidates(memDC, true);
-    if (_ToolbarIsVisible()) {
-      _DrawToolbar(memDC, true);
-      drawn = true;
-    }
     // background and candidates back, hilite back drawing end
 
     // begin  texts drawing, if pRenderTarget failed, force to reinit
@@ -1270,8 +1072,6 @@ void WeaselPanel::DoPaint(CDCHandle dc) {
     // draw candidates string
     if (m_candidateCount)
       drawn |= _DrawCandidates(memDC);
-    if (_ToolbarIsVisible())
-      _DrawToolbar(memDC, false);
     if (FAILED(pDWR->pRenderTarget->EndDraw())) {
       _InitFontRes(true);
       Refresh();
@@ -1354,8 +1154,6 @@ LRESULT WeaselPanel::OnDestroy(UINT uMsg,
                                LPARAM lParam,
                                BOOL& bHandled) {
   m_hoverIndex = -1;
-  m_toolbarHover = -1;
-  m_toolbarPressed = -1;
   m_lastMousePos = {-1, -1};
   m_sticky = false;
   delete m_layout;

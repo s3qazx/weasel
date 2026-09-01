@@ -76,6 +76,8 @@ class UI {
   PDWR pdwr() { return pDWR; }
   bool GetIsReposition();
   bool& InServer() { return in_server_; }
+  bool ToolbarEnabled() const { return toolbar_enabled_; }
+  void SetToolbarEnabled(bool enabled);
 
   std::function<void(size_t* const, size_t* const, bool* const, bool* const)>&
   uiCallback() {
@@ -106,6 +108,7 @@ class UI {
   UIStyle style_;
   UIStyle ostyle_;
   bool in_server_;
+  bool toolbar_enabled_ = false;
   std::function<void(size_t* const, size_t* const, bool* const, bool* const)>
       _UICallback;
   std::function<void(ToolbarAction, bool)> _ToolbarCallback;

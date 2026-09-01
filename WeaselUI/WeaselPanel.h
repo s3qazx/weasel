@@ -35,7 +35,6 @@ class WeaselPanel
   MESSAGE_HANDLER(WM_MOUSEWHEEL, OnMouseWheel)
   MESSAGE_HANDLER(WM_MOUSEMOVE, OnMouseMove)
   MESSAGE_HANDLER(WM_MOUSELEAVE, OnMouseLeave)
-  MESSAGE_HANDLER(WM_CAPTURECHANGED, OnCaptureChanged)
   CHAIN_MSG_MAP(CDoubleBufferImpl<WeaselPanel>)
   END_MSG_MAP()
 
@@ -57,10 +56,6 @@ class WeaselPanel
   LRESULT OnMouseWheel(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
   LRESULT OnMouseMove(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
   LRESULT OnMouseLeave(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
-  LRESULT OnCaptureChanged(UINT uMsg,
-                           WPARAM wParam,
-                           LPARAM lParam,
-                           BOOL& bHandled);
 
   WeaselPanel(weasel::UI& ui);
   ~WeaselPanel();
@@ -90,11 +85,6 @@ class WeaselPanel
   void _CreateLayout();
   void _ResizeWindow();
   void _RepositionWindow(const bool& adj = false);
-  bool _ToolbarIsVisible() const;
-  void _LayoutToolbar();
-  void _DrawToolbar(CDCHandle dc, bool back);
-  int _ToolbarHitTest(const CPoint& point) const;
-  void _InvokeToolbarAction(int index);
   bool _DrawPreedit(const Text& text, CDCHandle dc, const CRect& rc);
   bool _DrawPreeditBack(const Text& text, CDCHandle dc, const CRect& rc);
   bool _DrawCandidates(CDCHandle& dc, bool back = false);
@@ -154,16 +144,9 @@ class WeaselPanel
   PDWR pDWR;
   std::function<void(size_t* const, size_t* const, bool* const, bool* const)>&
       _UICallback;
-  std::function<void(ToolbarAction, bool)>& _ToolbarCallback;
   float bar_scale_ = 1.0;
   float dpiScaleLayout = 1.0f;
   int m_hoverIndex = -1;
   HMONITOR m_hMonitor = NULL;
   bool m_redraw_by_monitor_change = false;
-  static const int TOOLBAR_BUTTON_COUNT = 5;
-  CRect m_toolbarRects[TOOLBAR_BUTTON_COUNT];
-  CRect m_toolbarRect;
-  int m_toolbarWidth = 0;
-  int m_toolbarHover = -1;
-  int m_toolbarPressed = -1;
 };

@@ -37,6 +37,7 @@ int expand_ibus_modifier(int m) {
 RimeWithWeaselHandler::RimeWithWeaselHandler(UI* ui)
     : m_ui(ui),
       m_active_session(0),
+      m_toolbar_session(0),
       m_disabled(true),
       m_current_dark_mode(false),
       m_global_ascii_mode(false),
@@ -148,6 +149,9 @@ void RimeWithWeaselHandler::Initialize() {
 
 void RimeWithWeaselHandler::Finalize() {
   m_active_session = 0;
+  m_toolbar_session = 0;
+  if (m_ui)
+    m_ui->SetToolbarEnabled(false);
   m_disabled = true;
   m_session_status_map.clear();
   LOG(INFO) << "Finalizing la rime.";
@@ -211,19 +215,35 @@ DWORD RimeWithWeaselHandler::AddSession(LPWSTR buffer, EatLine eat) {
   _UpdateUI(ipc_id);
   add_session = false;
   m_active_session = ipc_id;
+  m_toolbar_session = ipc_id;
+  m_ui->SetToolbarEnabled(true);
   return ipc_id;
 }
 
 DWORD RimeWithWeaselHandler::RemoveSession(WeaselSessionId ipc_id) {
-  if (m_ui)
-    m_ui->Hide();
+  if (m_active_session == ipc_id) {
+    if (m_ui)
+      m_ui->Hide();
+    m_active_session = 0;
+  }
   if (m_disabled)
     return 0;
   DLOG(INFO) << "Remove session: session_id = " << to_session_id(ipc_id);
   // TODO: force committing? otherwise current composition would be lost
   rime_api->destroy_session(to_session_id(ipc_id));
   m_session_status_map.erase(ipc_id);
-  m_active_session = 0;
+  if (m_toolbar_session == ipc_id) {
+    m_toolbar_session = 0;
+    for (const auto& pair : m_session_status_map) {
+      if (pair.first) {
+        m_toolbar_session = pair.first;
+        break;
+      }
+    }
+    m_ui->SetToolbarEnabled(m_toolbar_session != 0);
+    if (m_toolbar_session)
+      _UpdateUI(m_toolbar_session);
+  }
   return 0;
 }
 
@@ -258,7 +278,11 @@ void RimeWithWeaselHandler::UpdateColorTheme(BOOL darkMode) {
       rime_api->free_status(&status);
     }
   }
-  m_ui->style() = get_session_status(m_active_session).style;
+  auto toolbar_session = m_session_status_map.find(m_toolbar_session);
+  m_ui->style() = toolbar_session == m_session_status_map.end()
+                      ? m_base_style
+                      : toolbar_session->second.style;
+  m_ui->Refresh();
 }
 
 BOOL RimeWithWeaselHandler::ProcessKeyEvent(KeyEvent keyEvent,
@@ -288,6 +312,8 @@ BOOL RimeWithWeaselHandler::ProcessKeyEvent(KeyEvent keyEvent,
   _Respond(ipc_id, eat);
   _UpdateUI(ipc_id);
   m_active_session = ipc_id;
+  m_toolbar_session = ipc_id;
+  m_ui->SetToolbarEnabled(true);
   return (BOOL)handled;
 }
 
@@ -298,6 +324,8 @@ void RimeWithWeaselHandler::CommitComposition(WeaselSessionId ipc_id) {
   rime_api->commit_composition(to_session_id(ipc_id));
   _UpdateUI(ipc_id);
   m_active_session = ipc_id;
+  m_toolbar_session = ipc_id;
+  m_ui->SetToolbarEnabled(true);
 }
 
 void RimeWithWeaselHandler::ClearComposition(WeaselSessionId ipc_id) {
@@ -307,6 +335,8 @@ void RimeWithWeaselHandler::ClearComposition(WeaselSessionId ipc_id) {
   rime_api->clear_composition(to_session_id(ipc_id));
   _UpdateUI(ipc_id);
   m_active_session = ipc_id;
+  m_toolbar_session = ipc_id;
+  m_ui->SetToolbarEnabled(true);
 }
 
 void RimeWithWeaselHandler::SelectCandidateOnCurrentPage(
@@ -350,13 +380,17 @@ void RimeWithWeaselHandler::FocusIn(DWORD client_caps, WeaselSessionId ipc_id) {
     return;
   _UpdateUI(ipc_id);
   m_active_session = ipc_id;
+  m_toolbar_session = ipc_id;
+  m_ui->SetToolbarEnabled(true);
 }
 
 void RimeWithWeaselHandler::FocusOut(DWORD param, WeaselSessionId ipc_id) {
   DLOG(INFO) << "Focus out: ipc_id = " << ipc_id;
-  if (m_ui)
-    m_ui->Hide();
-  m_active_session = 0;
+  if (m_active_session == ipc_id) {
+    if (m_ui)
+      m_ui->Hide();
+    m_active_session = 0;
+  }
 }
 
 void RimeWithWeaselHandler::UpdateInputPosition(RECT const& rc,
@@ -372,6 +406,8 @@ void RimeWithWeaselHandler::UpdateInputPosition(RECT const& rc,
     _UpdateUI(ipc_id);
     m_active_session = ipc_id;
   }
+  m_toolbar_session = ipc_id;
+  m_ui->SetToolbarEnabled(true);
 }
 
 std::string RimeWithWeaselHandler::m_message_type;
@@ -489,20 +525,26 @@ void RimeWithWeaselHandler::EndMaintenance() {
 void RimeWithWeaselHandler::SetOption(WeaselSessionId ipc_id,
                                       const std::string& opt,
                                       bool val) {
+  const WeaselSessionId target =
+      ipc_id ? ipc_id
+             : (m_active_session ? m_active_session : m_toolbar_session);
+  if (!target ||
+      m_session_status_map.find(target) == m_session_status_map.end())
+    return;
   // from no-session client, not actual typing session
   if (!ipc_id) {
     if (m_global_ascii_mode && opt == "ascii_mode") {
       for (auto& pair : m_session_status_map)
         rime_api->set_option(to_session_id(pair.first), "ascii_mode", val);
     } else {
-      rime_api->set_option(to_session_id(m_active_session), opt.c_str(), val);
+      rime_api->set_option(to_session_id(target), opt.c_str(), val);
     }
   } else {
     rime_api->set_option(to_session_id(ipc_id), opt.c_str(), val);
   }
   // refresh UI (and tray icon) so the option change takes effect immediately,
   // e.g. when toggling ascii_mode from the TSF language bar
-  _UpdateUI(ipc_id ? ipc_id : m_active_session);
+  _UpdateUI(target);
 }
 
 void RimeWithWeaselHandler::OnUpdateUI(std::function<void()> const& cb) {
@@ -523,7 +565,7 @@ void RimeWithWeaselHandler::_UpdateUI(WeaselSessionId ipc_id) {
   if (!m_ui)
     return;
 
-  Status& weasel_status = m_ui->status();
+  Status weasel_status = m_ui->status();
   Context weasel_context;
 
   RimeSessionId session_id = to_session_id(ipc_id);

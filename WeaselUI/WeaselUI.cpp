@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include <WeaselUI.h>
+#include "FloatingToolbar.h"
 #include "WeaselPanel.h"
 
 using namespace weasel;
@@ -7,18 +8,21 @@ using namespace weasel;
 class weasel::UIImpl {
  public:
   WeaselPanel panel;
+  FloatingToolbar toolbar;
 
-  UIImpl(weasel::UI& ui) : panel(ui), shown(false) {}
+  UIImpl(weasel::UI& ui) : panel(ui), toolbar(ui), shown(false) {}
   ~UIImpl() {}
   void Refresh() {
-    if (!panel.IsWindow())
-      return;
-    if (timer) {
-      Hide();
-      KillTimer(panel.m_hWnd, AUTOHIDE_TIMER);
-      timer = 0;
+    if (panel.IsWindow()) {
+      if (timer) {
+        Hide();
+        KillTimer(panel.m_hWnd, AUTOHIDE_TIMER);
+        timer = 0;
+      }
+      panel.Refresh();
     }
-    panel.Refresh();
+    if (toolbar.IsWindow())
+      toolbar.Refresh();
   }
   void Show();
   void Hide();
@@ -83,22 +87,28 @@ VOID CALLBACK UIImpl::OnTimer(_In_ HWND hwnd,
 }
 
 bool UI::Create(HWND parent) {
-  if (pimpl_) {
-    pimpl_->panel.Create(
-        parent, 0, 0, WS_POPUP,
-        WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT,
-        0U, 0);
-    return true;
+  if (!pimpl_) {
+    pimpl_ = new UIImpl(*this);
+    if (!pimpl_)
+      return false;
   }
 
-  pimpl_ = new UIImpl(*this);
-  if (!pimpl_)
-    return false;
-
-  pimpl_->panel.Create(
+  HWND panel = pimpl_->panel.Create(
       parent, 0, 0, WS_POPUP,
       WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT,
       0U, 0);
+  if (!panel)
+    return false;
+  if (in_server_) {
+    HWND toolbar = pimpl_->toolbar.Create(
+        parent, 0, L"Weasel input toolbar", WS_POPUP,
+        WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE, 0U, 0);
+    if (!toolbar) {
+      pimpl_->panel.DestroyWindow();
+      return false;
+    }
+    pimpl_->toolbar.Show();
+  }
   return true;
 }
 
@@ -107,6 +117,9 @@ void UI::Destroy(bool full) {
     // destroy panel
     if (pimpl_->panel.IsWindow()) {
       pimpl_->panel.DestroyWindow();
+    }
+    if (pimpl_->toolbar.IsWindow()) {
+      pimpl_->toolbar.DestroyWindow();
     }
     if (full) {
       delete pimpl_;
@@ -121,6 +134,14 @@ bool UI::GetIsReposition() {
     return pimpl_->panel.GetIsReposition();
   else
     return false;
+}
+
+void UI::SetToolbarEnabled(bool enabled) {
+  if (toolbar_enabled_ == enabled)
+    return;
+  toolbar_enabled_ = enabled;
+  if (pimpl_ && pimpl_->toolbar.IsWindow())
+    pimpl_->toolbar.Refresh();
 }
 
 void UI::Show() {
