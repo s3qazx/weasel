@@ -1,3 +1,13 @@
+<a name="0.17.5"></a>
+## [0.17.5](https://github.com/s3qazx/weasel/compare/0.17.4...0.17.5)(2026-09-02)
+
+### 主要更新
+* 新增仅在小狼毫为当前输入法时显示的常驻悬浮输入工具栏
+* 工具栏支持中英文、全半角、中英标点和简繁切换
+* 支持拖动定位、DPI 缩放、主题配色和 YAML 个性化配置
+* 支持通过 `style/toolbar/show` 选择是否显示工具栏
+* 更新 GitHub Actions，兼容 Node.js 24 运行环境
+
 <a name="0.17.4"></a>
 ## [0.17.4](https://github.com/rime/weasel/compare/0.17.3...0.17.4)(2025-06-04)
 
