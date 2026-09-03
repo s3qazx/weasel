@@ -300,8 +300,7 @@ void FloatingToolbar::DoPaint(CDCHandle dc) {
       ResolveColor(state.border_color, BlendColor(text, background, 48));
   const COLORREF theme_highlight =
       ResolveColor(state.hilited_back_color, BlendColor(text, background, 24));
-  const COLORREF hover_background =
-      BlendColor(theme_highlight, background, 72);
+  const COLORREF hover_background = BlendColor(theme_highlight, background, 72);
   const COLORREF pressed_background =
       BlendColor(theme_highlight, background, 112);
   const COLORREF disabled_text = BlendColor(text, background, 95);
