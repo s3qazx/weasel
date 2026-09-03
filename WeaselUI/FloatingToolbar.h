@@ -52,14 +52,13 @@ class FloatingToolbar
     bool simplified = false;
     std::wstring font_face = L"Microsoft YaHei UI";
     int font_point = 14;
-    int button_width = 46;
-    int height = 38;
-    int corner_radius = 8;
+    int button_width = 50;
+    int height = 56;
+    int corner_radius = 14;
     int back_color = 0;
     int text_color = 0;
     int border_color = 0;
     int hilited_back_color = 0;
-    int hilited_text_color = 0;
   };
 
   static constexpr UINT kRefreshMessage = WM_APP + 0x31;
@@ -101,9 +100,9 @@ class FloatingToolbar
   int width_ = 0;
   int height_ = 0;
   int font_point_ = 14;
-  int button_width_ = 46;
-  int toolbar_height_ = 38;
-  int corner_radius_ = 8;
+  int button_width_ = 50;
+  int toolbar_height_ = 56;
+  int corner_radius_ = 14;
   std::wstring font_face_ = L"Microsoft YaHei UI";
   bool visible_ = false;
   CRect button_rects_[kButtonCount];

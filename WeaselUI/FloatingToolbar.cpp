@@ -12,6 +12,10 @@ namespace {
 
 constexpr wchar_t kRegistryPath[] = L"Software\\Rime\\Weasel";
 constexpr wchar_t kPositionValue[] = L"FloatingToolbarPosition";
+constexpr int kOuterPadding = 6;
+constexpr int kButtonGap = 4;
+constexpr int kButtonInsetY = 7;
+constexpr int kButtonRadius = 10;
 
 COLORREF BlendColor(COLORREF foreground,
                     COLORREF background,
@@ -34,6 +38,20 @@ COLORREF ResolveColor(int color, COLORREF fallback) {
     return fallback;
   const COLORREF value = static_cast<COLORREF>(color & 0x00ffffff);
   return alpha == 0xff ? value : BlendColor(value, fallback, alpha);
+}
+
+void FillRoundedRect(CDCHandle dc,
+                     const CRect& rect,
+                     int radius,
+                     COLORREF color) {
+  HBRUSH brush = CreateSolidBrush(color);
+  HGDIOBJ old_brush = SelectObject(dc, brush);
+  HGDIOBJ old_pen = SelectObject(dc, GetStockObject(NULL_PEN));
+  ::RoundRect(dc, rect.left, rect.top, rect.right, rect.bottom, radius * 2,
+              radius * 2);
+  SelectObject(dc, old_pen);
+  SelectObject(dc, old_brush);
+  DeleteObject(brush);
 }
 
 }  // namespace
@@ -73,11 +91,15 @@ void FloatingToolbar::UpdateDpi() {
 
 void FloatingToolbar::UpdateMetrics() {
   const int button_width = Scale(button_width_);
-  width_ = button_width * kButtonCount;
+  const int outer_padding = Scale(kOuterPadding);
+  const int button_gap = Scale(kButtonGap);
+  width_ = outer_padding * 2 + button_width * kButtonCount +
+           button_gap * (kButtonCount - 1);
   height_ = Scale(toolbar_height_);
   for (int i = 0; i < kButtonCount; ++i) {
-    const int left = button_width * i;
-    button_rects_[i].SetRect(left, 0, left + button_width, height_);
+    const int left = outer_padding + (button_width + button_gap) * i;
+    button_rects_[i].SetRect(left, Scale(kButtonInsetY), left + button_width,
+                             height_ - Scale(kButtonInsetY));
   }
 
   HRGN region = corner_radius_ > 0
@@ -106,7 +128,7 @@ void FloatingToolbar::RecreateFonts() {
   if (!font_face_.empty())
     wcsncpy_s(log_font.lfFaceName, LF_FACESIZE, font_face_.c_str(), _TRUNCATE);
   log_font.lfHeight = -MulDiv(font_point_, static_cast<int>(dpi_), 72);
-  log_font.lfWeight = FW_NORMAL;
+  log_font.lfWeight = FW_MEDIUM;
   font_ = CreateFontIndirectW(&log_font);
 }
 
@@ -207,7 +229,6 @@ void FloatingToolbar::Refresh() {
   state.text_color = style.candidate_text_color;
   state.border_color = style.border_color;
   state.hilited_back_color = style.hilited_back_color;
-  state.hilited_text_color = style.hilited_candidate_text_color;
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
     state_ = state;
@@ -277,12 +298,31 @@ void FloatingToolbar::DoPaint(CDCHandle dc) {
       ResolveColor(state.text_color, GetSysColor(COLOR_WINDOWTEXT));
   const COLORREF border =
       ResolveColor(state.border_color, BlendColor(text, background, 48));
-  const COLORREF highlight =
+  const COLORREF theme_highlight =
       ResolveColor(state.hilited_back_color, BlendColor(text, background, 24));
-  const COLORREF highlight_text = ResolveColor(state.hilited_text_color, text);
+  const COLORREF hover_background =
+      BlendColor(theme_highlight, background, 72);
+  const COLORREF pressed_background =
+      BlendColor(theme_highlight, background, 112);
   const COLORREF disabled_text = BlendColor(text, background, 95);
 
   dc.FillSolidRect(client, background);
+  CRect surface = client;
+  HBRUSH surface_brush = CreateSolidBrush(background);
+  HPEN border_pen = CreatePen(PS_SOLID, Scale(1), border);
+  HGDIOBJ old_brush = SelectObject(dc, surface_brush);
+  HGDIOBJ old_pen = SelectObject(dc, border_pen);
+  const int surface_radius = Scale(corner_radius_);
+  if (surface_radius > 0) {
+    ::RoundRect(dc, surface.left, surface.top, surface.right, surface.bottom,
+                surface_radius * 2, surface_radius * 2);
+  } else {
+    ::Rectangle(dc, surface.left, surface.top, surface.right, surface.bottom);
+  }
+  SelectObject(dc, old_pen);
+  SelectObject(dc, old_brush);
+  DeleteObject(border_pen);
+  DeleteObject(surface_brush);
   dc.SetBkMode(TRANSPARENT);
 
   const wchar_t* labels[kButtonCount] = {
@@ -295,24 +335,18 @@ void FloatingToolbar::DoPaint(CDCHandle dc) {
     const bool hot = i == hover_ && enabled;
     const bool down = i == pressed_ && hot;
     CRect button = button_rects_[i];
-    if (hot) {
-      CRect fill = button;
-      fill.DeflateRect(Scale(3), Scale(4));
-      dc.FillSolidRect(fill,
-                       down ? BlendColor(text, highlight, 24) : highlight);
-    }
-    dc.SetTextColor(enabled ? (hot ? highlight_text : text) : disabled_text);
+    if (hot)
+      FillRoundedRect(dc, button, Scale(kButtonRadius),
+                      down ? pressed_background : hover_background);
+    dc.SetTextColor(enabled ? text : disabled_text);
     HFONT old_font = dc.SelectFont(font_);
-    dc.DrawText(labels[i], -1, &button,
+    CRect text_rect = button;
+    if (down)
+      text_rect.OffsetRect(0, Scale(1));
+    dc.DrawText(labels[i], -1, &text_rect,
                 DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
     dc.SelectFont(old_font);
   }
-
-  for (int i = 1; i < kButtonCount; ++i) {
-    const int x = static_cast<int>(button_rects_[i].left);
-    dc.FillSolidRect(x, Scale(9), 1, height_ - Scale(18), border);
-  }
-  dc.Draw3dRect(client, border, border);
 }
 
 LRESULT FloatingToolbar::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {

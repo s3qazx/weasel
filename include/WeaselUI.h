@@ -28,9 +28,9 @@ struct FloatingToolbarConfig {
   bool show = true;
   std::wstring font_face = L"Microsoft YaHei UI";
   int font_point = 14;
-  int button_width = 46;
-  int height = 38;
-  int corner_radius = 8;
+  int button_width = 50;
+  int height = 56;
+  int corner_radius = 14;
 };
 
 class UIImpl;
